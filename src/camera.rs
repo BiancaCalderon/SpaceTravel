@@ -5,7 +5,12 @@ pub struct Camera {
   pub eye: Vec3,
   pub center: Vec3,
   pub up: Vec3,
-  pub has_changed: bool
+  pub has_changed: bool,
+  pub bird_eye_active: bool,
+  pub previous_state: Option<(Vec3, Vec3, f32, f32, f32)>,
+  pub yaw: f32,
+  pub roll: f32,
+  pub pitch: f32,
 }
 
 impl Camera {
@@ -15,6 +20,11 @@ impl Camera {
       center,
       up,
       has_changed: true,
+      bird_eye_active: false,
+      previous_state: None,
+      yaw: 0.0,
+      roll: 0.0,
+      pitch: 0.0,
     }
   }
 
@@ -73,12 +83,12 @@ impl Camera {
     }
   }
 
-  pub fn rotate_pitch(&mut self, angle: f32) {
-    // Implementar rotación en el eje X
+  pub fn rotate_yaw(&mut self, angle: f32) {
+    self.yaw += angle;
   }
 
-  pub fn rotate_yaw(&mut self, angle: f32) {
-    // Implementar rotación en el eje Y
+  pub fn rotate_pitch(&mut self, angle: f32) {
+    self.pitch = (self.pitch + angle).clamp(-PI / 2.0 + 0.1, PI / 2.0 - 0.1);
   }
 
   pub fn move_up(&mut self, amount: f32) {
@@ -87,8 +97,30 @@ impl Camera {
   }
 
   pub fn set_bird_eye_view(&mut self) {
-    self.eye = Vec3::new(0.0, 25.0, 30.0);
-    self.center = Vec3::new(18.0, 0.0, 0.0);
+    self.eye = Vec3::new(0.0, 100.0, 100.0);
+    self.center = Vec3::new(0.0, 0.0, 0.0);
+    self.up = Vec3::new(0.0, 1.0, 0.0);
+  }
+
+  pub fn get_forward(&self) -> Vec3 {
+    Vec3::new(
+      self.yaw.cos() * self.pitch.cos(),
+      self.pitch.sin(),
+      self.yaw.sin() * self.pitch.cos(),
+    ).normalize()
+  }
+
+  pub fn get_up(&self) -> Vec3 {
+    self.up
+  }
+
+  pub fn get_right(&self) -> Vec3 {
+    self.get_forward().cross(&self.up).normalize()
+  }
+
+  pub fn set_normal_view(&mut self) {
+    self.eye = Vec3::new(0.0, 0.0, 10.0);
+    self.center = Vec3::new(0.0, 0.0, 0.0);
     self.up = Vec3::new(0.0, 1.0, 0.0);
   }
 }

@@ -50,7 +50,6 @@ impl Framebuffer {
 
     pub fn line(&mut self, start: Vec3, end: Vec3) {
         // Implementación del método para dibujar una línea entre start y end
-        // Aquí puedes usar un algoritmo de Bresenham o similar para trazar la línea
     }
 }
 

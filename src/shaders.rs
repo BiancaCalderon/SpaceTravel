@@ -67,6 +67,10 @@ pub fn fragment_shader(fragment: &Fragment, uniforms: &Uniforms, planet_type: &P
             let trail_effect = calculate_trail_effect(fragment, uniforms); // Efecto dinámico
             blend_layers(base_color, trail_effect)
         },
+        PlanetType::Spaceship => {
+            // Color o shader específico para la nave
+            Color::new(192, 192, 192) // Color gris para la nave
+        }
         _ => Color::new(0, 0, 0),
     }
 }

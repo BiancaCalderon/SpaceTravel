@@ -1,4 +1,4 @@
-use nalgebra_glm::{Vec3, Mat4, look_at, perspective};
+use nalgebra_glm::{Vec3, Vec4, Mat4, look_at, perspective};
 use minifb::{Key, Window, WindowOptions};
 use std::f32::consts::PI;
 
@@ -39,6 +39,69 @@ pub struct CelestialBody {
     scale: f32,
     rotation: Vec3,
     shader_type: PlanetType,
+    trail: Trail,
+}
+
+pub struct Trail {
+    particles: Vec<TrailParticle>,
+    max_particles: usize,
+    spawn_timer: f32,
+}
+
+pub struct TrailParticle {
+    position: Vec3,
+    color: u32,
+    lifetime: f32,
+    size: f32,
+}
+
+impl Trail {
+    fn new(max_particles: usize) -> Self {
+        Self {
+            particles: Vec::with_capacity(max_particles),
+            max_particles,
+            spawn_timer: 0.0,
+        }
+    }
+
+    fn update(&mut self, dt: f32) {
+        self.particles.retain_mut(|particle| {
+            particle.lifetime -= dt;
+            particle.size *= 0.999;
+            particle.lifetime > 0.0
+        });
+    }
+
+    fn add_particle(&mut self, position: Vec3, color: u32, is_moon: bool, planet_type: &PlanetType) {
+        if self.particles.len() >= self.max_particles {
+            self.particles.remove(0);
+        }
+
+        let lifetime = if is_moon { 2.0 } else { 200000.0 };
+        let size = if is_moon { 0.2 } else { 0.5 };
+
+        let trail_color = match planet_type {
+            PlanetType::Sun => 0xFFFFA500,       // Naranja brillante
+            PlanetType::RockyPlanet => 0xFFD2B48C, // Marrón claro (tono arena)
+            PlanetType::Earth => 0xFF32CD32,     // Verde limón
+            PlanetType::CrystalPlanet => 0xFFFF00FF, // Fucsia
+            PlanetType::FirePlanet => 0xFFFF4500,    // Rojo anaranjado (tono de fuego)
+            PlanetType::WaterPlanet => 0xFF40E0D0,   // Turquesa
+            PlanetType::CloudPlanet => 0xFFFFD700,   // Dorado
+            PlanetType::Moon => 0xFF9370DB,         // Morado
+            PlanetType::Asteroid => 0xFFFFA500,     // Naranja brillante (tono cercano a Sun)
+            PlanetType::Spaceship => 0xFFFFFFFF,    // Blanco
+            PlanetType::Trail => 0xFF888888,        // Gris
+            _ => 0xFFFFFFFF,
+        };
+
+        self.particles.push(TrailParticle {
+            position,
+            color: trail_color,
+            lifetime,
+            size,
+        });
+    }
 }
 
 fn create_noise() -> FastNoiseLite {
@@ -130,7 +193,7 @@ fn create_view_matrix(eye: Vec3, center: Vec3, up: Vec3) -> Mat4 {
 }
 
 fn create_perspective_matrix(window_width: f32, window_height: f32) -> Mat4 {
-    let fov = 45.0 * PI / 180.0;
+    let fov = 75.0 * PI / 180.0;
     let aspect_ratio = window_width / window_height;
     let near = 0.1;
     let far = 1000.0;
@@ -187,6 +250,49 @@ fn render(framebuffer: &mut Framebuffer, uniforms: &Uniforms, vertex_array: &[Ve
     }
 }
 
+fn render_trail(
+    framebuffer: &mut Framebuffer,
+    uniforms: &Uniforms,
+    particle: &TrailParticle,
+) {
+    let model_matrix = create_model_matrix(
+        particle.position,
+        particle.size,
+        Vec3::new(0.0, 0.0, 0.0)
+    );
+
+    let position_clip = uniforms.projection_matrix * uniforms.view_matrix * model_matrix * Vec4::new(0.0, 0.0, 0.0, 1.0);
+    
+    let position_clip_vec4 = position_clip.data.as_slice(); // Accede a los datos de la matriz como un slice
+    if position_clip_vec4[3] <= 0.0 {
+        return;
+    }
+
+    let position_ndc = Vec3::new(
+        position_clip_vec4[0] / position_clip_vec4[3],
+        position_clip_vec4[1] / position_clip_vec4[3],
+        position_clip_vec4[2] / position_clip_vec4[3],
+    );
+
+    let position_screen = uniforms.viewport_matrix * Vec4::new(
+        position_ndc.x,
+        position_ndc.y,
+        position_ndc.z,
+        1.0,
+    );
+
+    let x = position_screen.x as usize;
+    let y = position_screen.y as usize;
+
+    if x < framebuffer.width && y < framebuffer.height {
+        let alpha = (particle.lifetime * 255.0) as u32;
+        let color = (particle.color & 0x00FFFFFF) | (alpha << 24);
+        
+        framebuffer.set_current_color(color);
+        framebuffer.point(x, y, position_screen.z);
+    }
+}
+
 fn main() {
     let window_width = 800;
     let window_height = 600;
@@ -214,7 +320,7 @@ fn main() {
 
     // camera parameters
     let mut camera = Camera::new(
-        Vec3::new(0.0, 0.0, 5.0),
+        Vec3::new(0.0, 0.0, 10.0),
         Vec3::new(0.0, 0.0, 0.0),
         Vec3::new(0.0, 1.0, 0.0)
     );
@@ -242,54 +348,63 @@ fn main() {
             scale: 2.0,
             rotation: Vec3::new(0.0, 0.0, 0.0),
             shader_type: PlanetType::Sun,
+            trail: Trail::new(1000),
         },
         CelestialBody {
             position: Vec3::new(-4.0, 0.0, 0.0),
             scale: 0.3,
             rotation: Vec3::new(0.0, 0.0, 0.0),
             shader_type: PlanetType::Asteroid,
+            trail: Trail::new(7000),
         },
         CelestialBody {
             position: Vec3::new(6.0, 0.0, 0.0),
             scale: 0.4,
             rotation: Vec3::new(0.0, 0.0, 0.0),
             shader_type: PlanetType::RockyPlanet,
+            trail: Trail::new(9000),
         },
         CelestialBody {
             position: Vec3::new(12.0, 0.0, 0.0),
             scale: 0.6,
             rotation: Vec3::new(0.0, 0.0, 0.0),
             shader_type: PlanetType::Earth,
+            trail: Trail::new(12000),
         },
         CelestialBody {
             position: Vec3::new(18.0, 0.0, 0.0),
             scale: 0.5,
             rotation: Vec3::new(0.0, 0.0, 0.0),
             shader_type: PlanetType::CrystalPlanet,
+            trail: Trail::new(14000),
         },
         CelestialBody {
             position: Vec3::new(24.0, 0.0, 0.0),
             scale: 0.7,
             rotation: Vec3::new(0.0, 0.0, 0.0),
             shader_type: PlanetType::FirePlanet,
+            trail: Trail::new(17000),
         },
         CelestialBody {
             position: Vec3::new(30.0, 0.0, 0.0),
             scale: 1.0,
             rotation: Vec3::new(0.0, 0.0, 0.0),
             shader_type: PlanetType::WaterPlanet,
+            trail: Trail::new(19000),
         },
         CelestialBody {
             position: Vec3::new(36.0, 0.0, 0.0),
             scale: 0.8,
             rotation: Vec3::new(0.0, 0.0, 0.0),
             shader_type: PlanetType::CloudPlanet,
+            trail: Trail::new(22000),
         },
         CelestialBody {
             position: Vec3::new(12.0, 0.0, 2.0),
             scale: 0.2,
             rotation: Vec3::new(0.0, 0.0, 0.0),
             shader_type: PlanetType::Moon,
+            trail: Trail::new(600),
         },
     ];
 
@@ -328,14 +443,11 @@ fn main() {
         0xFFFFFF, // Blanco para el asteroide
     ];
 
-    // Crear un vector para almacenar las posiciones anteriores de cada cuerpo celeste
+    // Almacenar las posiciones anteriores de cada cuerpo celeste
     let mut previous_positions: Vec<Vec<Vec3>> = vec![vec![]; celestial_bodies.len()];
 
-    // Obtener la posición de la Tierra antes de modificar celestial_bodies
-    let earth_position = celestial_bodies.iter()
-        .find(|b| b.shader_type == PlanetType::Earth)
-        .map(|b| b.position)
-        .unwrap_or(Vec3::new(0.0, 0.0, 0.0)); // Valor por defecto en caso de que no se encuentre
+    // Cargar el modelo de la nave
+    let spaceship_obj = Obj::load("assets/models/spaceship.obj").expect("Failed to load spaceship obj");
 
     while window.is_open() {
         if window.is_key_down(Key::Escape) {
@@ -344,11 +456,17 @@ fn main() {
 
         time += 1;
 
-        handle_input(&window, &mut camera);
+        handle_input(&window, &mut camera, &celestial_bodies);
 
         framebuffer.clear();
 
         skybox.render(&mut framebuffer, &uniforms, camera.eye);
+
+        // Guardar la posición de la Tierra antes de modificar celestial_bodies
+        let earth_position = celestial_bodies.iter()
+            .find(|b| b.shader_type == PlanetType::Earth)
+            .map(|b| b.position)
+            .unwrap_or(Vec3::new(0.0, 0.0, 0.0)); // Valor por defecto en caso de que no se encuentre
 
         // Actualizar la posición de los planetas en órbita
         for (i, body) in celestial_bodies.iter_mut().enumerate() {
@@ -363,9 +481,7 @@ fn main() {
             // Calcular la velocidad de órbita en función del radio
             let orbit_speed = base_orbit_speed / orbit_radius; // Planetas más lejanos se mueven más lento
 
-            // Guardar la posición anterior
-            previous_positions[i].push(body.position);
-
+            // Actualizar la posición del cuerpo celeste
             body.position.x = orbit_radius * angle.cos(); // Posición en X
             body.position.z = orbit_radius * angle.sin(); // Posición en Z
 
@@ -374,18 +490,42 @@ fn main() {
 
             // Si el cuerpo es la luna, ajustar su posición respecto a la Tierra
             if body.shader_type == PlanetType::Moon {
-                // Calcular la posición de la luna en función de la posición de la Tierra
                 body.position = earth_position + Vec3::new(moon_orbit_radius * moon_angle.cos(), 0.0, moon_orbit_radius * moon_angle.sin());
-            }
-
-            // Limitar el número de posiciones almacenadas para evitar un uso excesivo de memoria
-            if previous_positions[i].len() > 100 {
-                previous_positions[i].remove(0);
             }
         }
 
         // Actualizar el ángulo de la luna
         moon_angle += 0.05; // Incrementar el ángulo de la luna para simular su órbita
+
+        // Primero renderizar las estelas
+        for body in &celestial_bodies {
+            for particle in &body.trail.particles {
+                render_trail(&mut framebuffer, &uniforms, particle);
+            }
+        }
+
+        // Actualizar las estelas al final del frame
+        for body in &mut celestial_bodies {
+            body.trail.update(0.016);
+            
+            let color = match body.shader_type {
+                PlanetType::Sun => 0xFFFFA500,       // Naranja brillante
+                PlanetType::RockyPlanet => 0xFFD2B48C, // Marrón claro (tono arena)
+                PlanetType::Earth => 0xFF32CD32,     // Verde limón
+                PlanetType::CrystalPlanet => 0xFFFF00FF, // Fucsia
+                PlanetType::FirePlanet => 0xFFFF4500,    // Rojo anaranjado (tono de fuego)
+                PlanetType::WaterPlanet => 0xFF40E0D0,   // Turquesa
+                PlanetType::CloudPlanet => 0xFFFFD700,   // Dorado
+                PlanetType::Moon => 0xFF9370DB,         // Morado
+                PlanetType::Asteroid => 0xFFFFA500,     // Naranja brillante (tono cercano a Sun)
+                PlanetType::Spaceship => 0xFFFFFFFF,    // Blanco
+                PlanetType::Trail => 0xFF888888,        // Gris
+                
+            };
+            
+            let is_moon = matches!(body.shader_type, PlanetType::Moon);
+            body.trail.add_particle(body.position, color, is_moon, &body.shader_type);
+        }
 
         // Renderizar cada cuerpo celeste
         for (i, body) in celestial_bodies.iter().enumerate() {
@@ -418,64 +558,112 @@ fn main() {
             render_orbit(&mut framebuffer, orbit_radius, 100, color); // Asegúrate de que esta línea esté correcta
         }
 
+        // Actualizar la posición de la nave solo si no estamos en vista de pájaro
+        let spaceship_position = if camera.bird_eye_active {
+            Vec3::new(0.0, 5.0, 0.0) // Posición fija en el sistema solar
+        } else {
+            let camera_direction = (camera.center - camera.eye).normalize();
+            camera.eye + camera_direction * 2.0 + Vec3::new(0.0, -0.5, 0.0) // Ajusta según sea necesario
+        };
+
+        // Ajusta la posición de la cámara en vista de pájaro
+        if camera.bird_eye_active {
+            camera.eye = Vec3::new(0.0, 42.0, 42.0); // Acerca la cámara
+            camera.center = Vec3::new(0.0, 0.0, 0.0); // Mantiene el enfoque en el centro
+        }
+
+        // Renderizar la nave
+        uniforms.model_matrix = create_model_matrix(
+            spaceship_position,
+            0.1, // Escala de la nave
+            Vec3::new(0.0, 3.0 * PI / 2.0, 0.0) // Rotación de la nave (270 grados en radianes)
+        );
+        uniforms.view_matrix = create_view_matrix(camera.eye, camera.center, camera.up);
+        render(&mut framebuffer, &uniforms, &spaceship_obj.get_vertex_array(), &PlanetType::Spaceship);
+
         window
             .update_with_buffer(&framebuffer.buffer, framebuffer_width, framebuffer_height)
             .unwrap();
     }
 }
 
-fn handle_input(window: &Window, camera: &mut Camera) {
-    let movement_speed = 0.5;
-    let rotation_speed = PI / 50.0;
-    let zoom_speed = 1.0;
+fn handle_input(window: &Window, camera: &mut Camera, celestial_bodies: &[CelestialBody]) {
+    let movement_speed = 0.2;
+    let rotation_speed = PI / 128.0;
+    let bank_angle = PI / 16.0;
 
-    // Rotación de la cámara (mirando arriba/abajo)
-    if window.is_key_down(Key::Up) {
-        camera.rotate_pitch(-rotation_speed);
-    }
-    if window.is_key_down(Key::Down) {
-        camera.rotate_pitch(rotation_speed);
-    }
-
-    // Movimiento WASD (adelante, izquierda, atrás, derecha)
-    let mut movement = Vec3::new(0.0, 0.0, 0.0);
-    if window.is_key_down(Key::W) {
-        movement.z -= movement_speed; // Mover hacia adelante
-    }
-    if window.is_key_down(Key::S) {
-        movement.z += movement_speed; // Mover hacia atrás
-    }
-    if window.is_key_down(Key::A) {
-        movement.x -= movement_speed; // Mover a la izquierda
-    }
-    if window.is_key_down(Key::D) {
-        movement.x += movement_speed; // Mover a la derecha
-    }
-
-    // Aplicar movimiento solo si hay entrada
-    if movement.magnitude() > 0.0 {
-        camera.move_center(movement);
-    }
-
-    // Movimiento vertical (Q para subir, E para bajar)
-    if window.is_key_down(Key::Q) {
-        camera.move_up(movement_speed);
-    }
-    if window.is_key_down(Key::E) {
-        camera.move_up(-movement_speed);
-    }
-
-    // Zoom (1 para acercar, 2 para alejar)
-    if window.is_key_down(Key::Key1) {
-        camera.zoom(zoom_speed);
-    }
-    if window.is_key_down(Key::Key2) {
-        camera.zoom(-zoom_speed);
-    }
-
-    // Activar vista de pájaro (tecla B)
+    // Manejar la vista aérea
     if window.is_key_down(Key::B) {
-        camera.set_bird_eye_view();
+        if !camera.bird_eye_active {
+            // Guardar el estado actual antes de cambiar a vista aérea
+            camera.previous_state = Some((
+                camera.eye,
+                camera.center,
+                camera.pitch,
+                camera.yaw,
+                camera.roll
+            ));
+            camera.set_bird_eye_view();
+            camera.bird_eye_active = true;
+        }
+    } else if camera.bird_eye_active {
+        // Restaurar la posición anterior cuando se suelta B
+        if let Some((prev_eye, prev_center, prev_pitch, prev_yaw, prev_roll)) = camera.previous_state {
+            camera.eye = prev_eye;
+            camera.center = prev_center;
+            camera.pitch = prev_pitch;
+            camera.yaw = prev_yaw;
+            camera.roll = prev_roll;
+            camera.previous_state = None;
+            camera.bird_eye_active = false;
+        }
+    }
+
+    // Solo procesar otros controles si no estamos en vista aérea
+    if !camera.bird_eye_active {
+        // Rotación de la cámara (mirando arriba/abajo)
+        if window.is_key_down(Key::Up) {
+            camera.rotate_pitch(-rotation_speed);
+        }
+        if window.is_key_down(Key::Down) {
+            camera.rotate_pitch(rotation_speed);
+        }
+
+        // Movimiento WASD (adelante, izquierda, atrás, derecha)
+        let mut movement = Vec3::new(0.0, 0.0, 0.0);
+        if window.is_key_down(Key::W) {
+            movement.z -= movement_speed; // Mover hacia adelante
+        }
+        if window.is_key_down(Key::S) {
+            movement.z += movement_speed; // Mover hacia atrás
+        }
+        if window.is_key_down(Key::A) {
+            movement.x -= movement_speed; // Mover a la izquierda
+        }
+        if window.is_key_down(Key::D) {
+            movement.x += movement_speed; // Mover a la derecha
+        }
+
+        // Aplicar movimiento solo si hay entrada
+        if movement.magnitude() > 0.0 {
+            camera.move_center(movement);
+        }
+
+        // Movimiento vertical (Q para subir, E para bajar)
+        if window.is_key_down(Key::Q) {
+            camera.move_up(movement_speed);
+        }
+        if window.is_key_down(Key::E) {
+            camera.move_up(-movement_speed);
+        }
+
+        // Zoom (1 para acercar, 2 para alejar)
+        if window.is_key_down(Key::Key1) {
+            camera.zoom(1.0);
+        }
+        if window.is_key_down(Key::Key2) {
+            camera.zoom(-1.0);
+        }
     }
 }
 
