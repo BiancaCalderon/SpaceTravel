@@ -56,3 +56,16 @@ pub fn with_normal_map(f: impl FnOnce(&NormalMap) -> Vec3) -> Vec3 {
     f(normal_map)
 }
 
+pub fn render_earth(u: f32, v: f32) -> Vec3 {
+    // Obtener el color base de la Tierra
+    let base_color = Vec3::new(0.0, 0.5, 1.0); // Color azul para la Tierra
+
+    // Obtener el vector normal del mapa normal
+    let normal = with_normal_map(|normal_map| normal_map.sample(u, v));
+
+    // Combinar el color base con el normal (esto es solo un ejemplo)
+    let final_color = base_color + normal * 0.1; // Ajusta la intensidad según sea necesario
+
+    final_color
+}
+

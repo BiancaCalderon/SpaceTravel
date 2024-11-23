@@ -293,6 +293,38 @@ fn render_trail(
     }
 }
 
+// Definir puntos de destino en el sistema solar
+static WARP_POINTS: &[Vec3] = &[
+    Vec3::new(0.0, 0.0, 0.0),   // Sol
+    Vec3::new(-4.0, 0.0, 0.0),  // Asteroide
+    Vec3::new(6.0, 0.0, 0.0),   // Planeta Rocoso
+    Vec3::new(12.0, 0.0, 0.0),  // Tierra
+    Vec3::new(18.0, 0.0, 0.0),  // Planeta Cristal
+    Vec3::new(24.0, 0.0, 0.0),  // Planeta de Fuego
+    Vec3::new(30.0, 0.0, 0.0),  // Planeta de Agua
+    Vec3::new(36.0, 0.0, 0.0),  // Planeta Nube
+];
+
+// Función para realizar el warping
+fn instant_warp(camera: &mut Camera, target_position: Vec3) {
+    camera.eye = target_position + Vec3::new(0.0, 0.0, 10.0); // Ajusta la posición de la cámara
+    camera.center = target_position; // Enfocar en el nuevo destino
+}
+
+fn is_in_frustum(body: &CelestialBody, view_matrix: &Mat4, projection_matrix: &Mat4) -> bool {
+    let model_matrix = create_model_matrix(body.position, body.scale, body.rotation);
+    let mvp_matrix = projection_matrix * view_matrix * model_matrix;
+
+    // Comprobar si el cuerpo celeste está dentro del frustum
+    let clip_space_position = mvp_matrix * Vec4::new(0.0, 0.0, 0.0, 1.0);
+    let w = clip_space_position.w;
+
+    // Comprobar si está dentro de los límites del frustum
+    clip_space_position.x >= -w && clip_space_position.x <= w &&
+    clip_space_position.y >= -w && clip_space_position.y <= w &&
+    clip_space_position.z >= -w && clip_space_position.z <= w
+}
+
 fn main() {
     let window_width = 800;
     let window_height = 600;
@@ -410,19 +442,19 @@ fn main() {
 
     // Definir los radios de órbita para cada planeta
     let planet_orbit_radii = vec![
-        8.0, // Radio para el primer planeta
-        12.0, // Radio para el segundo planeta
-        16.0, // Radio para el tercer planeta
+        0.0, // Radio para el primer planeta (Sol)
+        10.0, // Radio para el segundo planeta
+        15.0, // Radio para el tercer planeta
         20.0, // Radio para el cuarto planeta (Tierra)
-        24.0, // Radio para el quinto planeta
-        28.0, // Radio para el sexto planeta
-        32.0, // Radio para el séptimo planeta
-        36.0, // Radio para el octavo planeta
-        6.0,  // Radio para el asteroide (más cerca del sol)
+        25.0, // Radio para el quinto planeta
+        30.0, // Radio para el sexto planeta
+        35.0, // Radio para el séptimo planeta
+        40.0, // Radio para el octavo planeta
+        5.0,  // Radio para el asteroide (más cerca del sol)
     ];
 
     // Velocidad de órbita base
-    let base_orbit_speed = 0.01; // Velocidad base para el planeta más cercano
+    let base_orbit_speed = 0.02; // Aumentar la velocidad base para el planeta más cercano
 
     let mut planet_angles: Vec<f32> = vec![0.0; celestial_bodies.len()]; // Ángulos iniciales de los planetas
 
@@ -448,6 +480,10 @@ fn main() {
 
     // Cargar el modelo de la nave
     let spaceship_obj = Obj::load("assets/models/spaceship.obj").expect("Failed to load spaceship obj");
+
+    // Variables para el tiempo delta y entradas
+    let delta_time = 0.016; // Por ejemplo, 60 FPS
+    let inputs = (1.0, 0.0, 0.0, 0.1, 0.0, 0.0); // (forward, right, up, roll, pitch, yaw)
 
     while window.is_open() {
         if window.is_key_down(Key::Escape) {
@@ -529,21 +565,23 @@ fn main() {
 
         // Renderizar cada cuerpo celeste
         for (i, body) in celestial_bodies.iter().enumerate() {
-            uniforms.model_matrix = create_model_matrix(
-                body.position,
-                body.scale,
-                body.rotation + Vec3::new(0.0, time as f32 * 0.01, 0.0)
-            );
-            uniforms.view_matrix = create_view_matrix(camera.eye, camera.center, camera.up);
-            uniforms.time = time;
+            if is_in_frustum(body, &uniforms.view_matrix, &uniforms.projection_matrix) {
+                uniforms.model_matrix = create_model_matrix(
+                    body.position,
+                    body.scale,
+                    body.rotation + Vec3::new(0.0, time as f32 * 0.01, 0.0)
+                );
+                uniforms.view_matrix = create_view_matrix(camera.eye, camera.center, camera.up);
+                uniforms.time = time;
 
-            render(&mut framebuffer, &uniforms, &vertex_arrays, &body.shader_type);
+                render(&mut framebuffer, &uniforms, &vertex_arrays, &body.shader_type);
 
-            // Dibujar la estela
-            let color = colors[i]; // Obtener el color correspondiente
-            for j in 0..previous_positions[i].len() - 1 {
-                if j + 1 < previous_positions[i].len() {
-                    framebuffer.line(previous_positions[i][j], previous_positions[i][j + 1]);
+                // Dibujar la estela
+                let color = colors[i]; // Obtener el color correspondiente
+                for j in 0..previous_positions[i].len() - 1 {
+                    if j + 1 < previous_positions[i].len() {
+                        framebuffer.line(previous_positions[i][j], previous_positions[i][j + 1]);
+                    }
                 }
             }
         }
@@ -560,26 +598,52 @@ fn main() {
 
         // Actualizar la posición de la nave solo si no estamos en vista de pájaro
         let spaceship_position = if camera.bird_eye_active {
-            Vec3::new(0.0, 5.0, 0.0) // Posición fija en el sistema solar
+            Vec3::new(0.0, 5.0, 15.0) // Aumenta la distancia de la nave
         } else {
             let camera_direction = (camera.center - camera.eye).normalize();
-            camera.eye + camera_direction * 2.0 + Vec3::new(0.0, -0.5, 0.0) // Ajusta según sea necesario
+            camera.eye + camera_direction * 5.0 + Vec3::new(3.0, 1.0, 0.0) // Mueve la nave más a la derecha y hacia arriba
         };
 
         // Ajusta la posición de la cámara en vista de pájaro
         if camera.bird_eye_active {
-            camera.eye = Vec3::new(0.0, 42.0, 42.0); // Acerca la cámara
+            camera.eye = Vec3::new(0.0, 45.0, 45.0); // Acerca la cámara
             camera.center = Vec3::new(0.0, 0.0, 0.0); // Mantiene el enfoque en el centro
         }
 
         // Renderizar la nave
         uniforms.model_matrix = create_model_matrix(
             spaceship_position,
-            0.1, // Escala de la nave
-            Vec3::new(0.0, 3.0 * PI / 2.0, 0.0) // Rotación de la nave (270 grados en radianes)
+            0.003, // Escala de la nave ajustada a un tamaño más pequeño
+            Vec3::new(0.0, 0.0, camera.roll) // Aplicar el roll a la rotación de la nave
         );
         uniforms.view_matrix = create_view_matrix(camera.eye, camera.center, camera.up);
         render(&mut framebuffer, &uniforms, &spaceship_obj.get_vertex_array(), &PlanetType::Spaceship);
+
+        // Manejar la entrada para el warping
+        if window.is_key_down(Key::Key1) {
+            instant_warp(&mut camera, WARP_POINTS[0]); // Warp al Sol
+        }
+        if window.is_key_down(Key::Key2) {
+            instant_warp(&mut camera, WARP_POINTS[1]); // Warp al Asteroide
+        }
+        if window.is_key_down(Key::Key3) {
+            instant_warp(&mut camera, WARP_POINTS[2]); // Warp al Planeta Rocoso
+        }
+        if window.is_key_down(Key::Key4) {
+            instant_warp(&mut camera, WARP_POINTS[3]); // Warp a la Tierra
+        }
+        if window.is_key_down(Key::Key5) {
+            instant_warp(&mut camera, WARP_POINTS[4]); // Warp al Planeta Cristal
+        }
+        if window.is_key_down(Key::Key6) {
+            instant_warp(&mut camera, WARP_POINTS[5]); // Warp al Planeta de Fuego
+        }
+        if window.is_key_down(Key::Key7) {
+            instant_warp(&mut camera, WARP_POINTS[6]); // Warp al Planeta de Agua
+        }
+        if window.is_key_down(Key::Key8) {
+            instant_warp(&mut camera, WARP_POINTS[7]); // Warp al Planeta Nube
+        }
 
         window
             .update_with_buffer(&framebuffer.buffer, framebuffer_width, framebuffer_height)
@@ -588,7 +652,7 @@ fn main() {
 }
 
 fn handle_input(window: &Window, camera: &mut Camera, celestial_bodies: &[CelestialBody]) {
-    let movement_speed = 0.2;
+    let movement_speed = 0.5;
     let rotation_speed = PI / 128.0;
     let bank_angle = PI / 16.0;
 
@@ -629,6 +693,9 @@ fn handle_input(window: &Window, camera: &mut Camera, celestial_bodies: &[Celest
             camera.rotate_pitch(rotation_speed);
         }
 
+        // Almacenar el roll actual
+        let mut roll_adjustment = 0.0;
+
         // Movimiento WASD (adelante, izquierda, atrás, derecha)
         let mut movement = Vec3::new(0.0, 0.0, 0.0);
         if window.is_key_down(Key::W) {
@@ -639,9 +706,19 @@ fn handle_input(window: &Window, camera: &mut Camera, celestial_bodies: &[Celest
         }
         if window.is_key_down(Key::A) {
             movement.x -= movement_speed; // Mover a la izquierda
+            roll_adjustment += bank_angle; // Inclinación a la izquierda
         }
         if window.is_key_down(Key::D) {
             movement.x += movement_speed; // Mover a la derecha
+            roll_adjustment -= bank_angle; // Inclinación a la derecha
+        }
+
+        // Aplicar el ajuste de rollo solo si hay movimiento
+        if roll_adjustment != 0.0 {
+            camera.roll += roll_adjustment; // Mantener la inclinación
+            camera.roll = camera.roll.clamp(-0.1, 0.1); // Limitar el rollo a un rango pequeño
+        } else {
+            camera.roll = 0.0; // Restablecer el roll a 0 al soltar las teclas
         }
 
         // Aplicar movimiento solo si hay entrada
@@ -651,10 +728,10 @@ fn handle_input(window: &Window, camera: &mut Camera, celestial_bodies: &[Celest
 
         // Movimiento vertical (Q para subir, E para bajar)
         if window.is_key_down(Key::Q) {
-            camera.move_up(movement_speed);
+            camera.eye.y += movement_speed; // Subir
         }
         if window.is_key_down(Key::E) {
-            camera.move_up(-movement_speed);
+            camera.eye.y -= movement_speed; // Bajar
         }
 
         // Zoom (1 para acercar, 2 para alejar)
