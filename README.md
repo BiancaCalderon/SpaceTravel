@@ -79,7 +79,8 @@ cargo run --release
  
 ## Ejecución
 
-[![Vista previa del video](https://img.youtube.com/vi/tBWhDgjTZx8/0.jpg)](https://youtu.be/tBWhDgjTZx8)
+
+https://github.com/user-attachments/assets/71e832d7-b921-40ee-9861-bbe020ad7afe
 
 
 
