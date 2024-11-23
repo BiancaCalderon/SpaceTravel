@@ -77,9 +77,9 @@ cargo run --release
   - `triangle.rs`: Maneja la lógica y representación de triángulos en la simulación.
   - `vertex.rs`: Contiene la definición de los vértices y su manipulación en la renderización.
  
-  ## Ejecución
+## Ejecución
 
-https://youtu.be/tBWhDgjTZx8
+[![Vista previa del video](https://img.youtube.com/vi/tBWhDgjTZx8/0.jpg)](https://youtu.be/tBWhDgjTZx8)
 
 
 
