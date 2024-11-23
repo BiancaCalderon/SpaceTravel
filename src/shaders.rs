@@ -117,69 +117,6 @@ fn cloud_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
   noise_color * fragment.intensity
 }
 
-fn gaseous_planet_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
-    let zoom = 50.0;
-    let x = fragment.vertex_position.x;
-    let y = fragment.vertex_position.y;
-
-    // Generar ruido para simular nubes gaseosas
-    let noise_value = uniforms.noise.get_noise_2d(x * zoom, y * zoom);
-    
-    // Colores base para las franjas de Júpiter (más oscuros)
-    let stripe_color1 = Color::new(200, 153, 0); // Color amarillo oscuro
-    let stripe_color2 = Color::new(200, 102, 0); // Color naranja oscuro
-    let stripe_color3 = Color::new(153, 51, 0);  // Color marrón oscuro
-    let stripe_color4 = Color::new(200, 200, 200); // Color blanco para las nubes (más transparente)
-    let stripe_color5 = Color::new(150, 150, 150); // Color gris claro para variaciones
-
-    // Crear un patrón de franjas utilizando ruido y la posición y
-    let stripe_pattern = (y * 3.0).sin() * 0.5 + 0.5; // Aumentar la frecuencia para más franjas
-
-    // Mezclar colores según el patrón de franjas
-    let base_color = if stripe_pattern < 0.2 {
-        stripe_color1
-    } else if stripe_pattern < 0.4 {
-        stripe_color2
-    } else if stripe_pattern < 0.6 {
-        stripe_color3
-    } else if stripe_pattern < 0.8 {
-        stripe_color4
-    } else {
-        stripe_color5 // Añadir un color gris claro para más variación
-    };
-
-    // Interpolación suave entre colores
-    let smooth_color = if stripe_pattern < 0.2 {
-        stripe_color1.lerp(&stripe_color2, stripe_pattern * 5.0)
-    } else if stripe_pattern < 0.4 {
-        stripe_color2.lerp(&stripe_color3, (stripe_pattern - 0.2) * 5.0)
-    } else if stripe_pattern < 0.6 {
-        stripe_color3.lerp(&stripe_color4, (stripe_pattern - 0.4) * 5.0)
-    } else if stripe_pattern < 0.8 {
-        stripe_color4.lerp(&stripe_color5, (stripe_pattern - 0.6) * 5.0)
-    } else {
-        stripe_color5.lerp(&stripe_color1, (stripe_pattern - 0.8) * 5.0)
-    };
-
-    // Ajustar el tamaño de la mancha blanca y hacerla más difusa
-    let white_spot_size = 0.05; // Tamaño de la mancha blanca más pequeña
-    let white_spot = if (y.abs() - 0.5).abs() < white_spot_size {
-        stripe_color4 * 0.5 // Hacer la nube más transparente
-    } else {
-        smooth_color
-    };
-
-    // Aplicar un efecto de ruido adicional para variación
-    let final_color = if noise_value > 0.5 { 
-        stripe_color4.lerp(&smooth_color, 0.5) // Mezclar con el color suave
-    } else { 
-        white_spot 
-    };
-
-    // Ajustar la intensidad del color final
-    final_color * fragment.intensity * 0.8 // Reducir la intensidad para un efecto más sutil
-}
-
 fn rocky_planet_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
   let zoom = 30.0;
   let x = fragment.vertex_position.x;
@@ -189,7 +126,6 @@ fn rocky_planet_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
   let noise_value = uniforms.noise.get_noise_2d(x * zoom, y * zoom);                    // Ruido grande para formaciones rocosas
   let small_noise_value = uniforms.noise.get_noise_2d(x * zoom * 2.0, y * zoom * 2.0);    // Ruido de alta frecuencia para detalles finos
   let medium_noise_value = uniforms.noise.get_noise_2d(x * zoom * 0.5, y * zoom * 0.5);    // Ruido de escala media para variabilidad
-  let crater_noise = uniforms.noise.get_noise_2d(x * zoom * 3.0, y * zoom * 3.0);         // Ruido para simular los cráteres
   let very_small_noise_value = uniforms.noise.get_noise_2d(x * zoom * 4.0, y * zoom * 4.0); // Ruido extra fino para detalles muy pequeños
 
   // Colores base para las rocas (variaciones de grises, marrones, y toques de óxido)
@@ -480,7 +416,6 @@ fn striped_planet_shader(fragment: &Fragment, uniforms: &Uniforms) -> Color {
 
     // Colores base para las franjas
     let stripe_color1 = Color::new(255, 100, 0); // Naranja intenso
-    let stripe_color2 = Color::new(255, 200, 0); // Amarillo brillante
     let stripe_color3 = Color::new(255, 50, 0);  // Naranja rojizo
 
     // Crear un patrón de franjas utilizando una función seno

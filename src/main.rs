@@ -20,7 +20,7 @@ use obj::Obj;
 use camera::Camera;
 use triangle::triangle;
 use shaders::{vertex_shader, fragment_shader};
-use fastnoise_lite::{FastNoiseLite, NoiseType, FractalType};
+use fastnoise_lite::{FastNoiseLite, NoiseType};
 use planet::PlanetType;
 //use normal_map::init_normal_map;
 use skybox::Skybox;
@@ -45,7 +45,6 @@ pub struct CelestialBody {
 pub struct Trail {
     particles: Vec<TrailParticle>,
     max_particles: usize,
-    spawn_timer: f32,
 }
 
 pub struct TrailParticle {
@@ -60,7 +59,6 @@ impl Trail {
         Self {
             particles: Vec::with_capacity(max_particles),
             max_particles,
-            spawn_timer: 0.0,
         }
     }
 
@@ -111,41 +109,6 @@ fn create_noise() -> FastNoiseLite {
 fn create_cloud_noise() -> FastNoiseLite {
     let mut noise = FastNoiseLite::with_seed(1337);
     noise.set_noise_type(Some(NoiseType::OpenSimplex2));
-    noise
-}
-
-fn create_cell_noise() -> FastNoiseLite {
-    let mut noise = FastNoiseLite::with_seed(1337);
-    noise.set_noise_type(Some(NoiseType::Cellular));
-    noise.set_frequency(Some(0.1));
-    noise
-}
-
-fn create_ground_noise() -> FastNoiseLite {
-    let mut noise = FastNoiseLite::with_seed(1337);
-    
-    // Use FBm fractal type to layer multiple octaves of noise
-    noise.set_noise_type(Some(NoiseType::Cellular)); // Cellular noise for cracks
-    noise.set_fractal_type(Some(FractalType::FBm));  // Fractal Brownian Motion
-    noise.set_fractal_octaves(Some(5));              // More octaves = more detail
-    noise.set_fractal_lacunarity(Some(2.0));         // Lacunarity controls frequency scaling
-    noise.set_fractal_gain(Some(0.5));               // Gain controls amplitude scaling
-    noise.set_frequency(Some(0.05));                 // Lower frequency for larger features
-
-    noise
-}
-
-fn create_lava_noise() -> FastNoiseLite {
-    let mut noise = FastNoiseLite::with_seed(42);
-    
-    // Use FBm for multi-layered noise, giving a "turbulent" feel
-    noise.set_noise_type(Some(NoiseType::Perlin));  // Perlin noise for smooth, natural texture
-    noise.set_fractal_type(Some(FractalType::FBm)); // FBm for layered detail
-    noise.set_fractal_octaves(Some(6));             // High octaves for rich detail
-    noise.set_fractal_lacunarity(Some(2.0));        // Higher lacunarity = more contrast between layers
-    noise.set_fractal_gain(Some(0.5));              // Higher gain = more influence of smaller details
-    noise.set_frequency(Some(0.002));                // Low frequency = large features
-    
     noise
 }
 
